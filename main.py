@@ -56,7 +56,7 @@ parser.add_argument('-eps', type=float, default=0, help='Epsilon for differentia
 parser.add_argument('-lc', action='store_true', help="Whether to do loss calibration tackling label skew with fedavg")
 parser.add_argument('-tau', type=float, default=0.01, help='calibration loss constant for fedavg with LC')
 parser.add_argument('-rs', action='store_true', help="Whether to do restricted softmax tackling label skew with fedavg")
-parser.add_argument('-lamda', type=float, default=0.1, help="Regularization weight for fedED")
+parser.add_argument('-lamda', type=float, default=0.1, help="Regularization weight for fedLEC")
 parser.add_argument('-strength', type=float, default=0.5, help='restricted strength for fedavg with RS')
 # extra model settings
 parser.add_argument('-nh', '--num_heads', type=int, default=8, help='number of attention heads for spikeformer')
