@@ -20,7 +20,7 @@ scikit-learn==1.2.1
 ## How to run
 
 ```
-python main.py -data_dir=. -dataset=cifar10 -model=vgg9 -strategy=fedlac -np=10 -frac=0.2 -gpu=0 -partition=noniid-c-dir -alpha=0.5 -snn -T=4 -desc=Example
+python main.py -data_dir=. -dataset=cifar10 -model=vgg9 -strategy=fedlec -np=10 -frac=0.2 -gpu=0 -partition=noniid-c-dir -alpha=0.5 -snn -T=4 -desc=Example
 ```
 
 The experimental options implemented in paper are listed below:

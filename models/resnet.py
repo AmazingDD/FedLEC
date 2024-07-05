@@ -6,49 +6,6 @@ from spikingjelly.activation_based import layer, functional, neuron, surrogate
 
 from utils import INPUT_SIZE
 
-
-class Scaler(nn.Module):
-    def __init__(self, rate):
-        super().__init__()
-        self.rate = rate
-
-    def forward(self, input):
-        output = input / self.rate if self.training else input
-        return output
-
-
-class Scale_Block(nn.Module):
-    expansion = 1
-
-    def __init__(self, in_channels, out_channels, stride,is_snn,rate):
-        super(Scale_Block, self).__init__()
-        n1 = nn.BatchNorm2d(in_channels, momentum=None, track_running_stats=False)
-        n2 = nn.BatchNorm2d(out_channels, momentum=None, track_running_stats=False)
-        self.act1 = neuron.LIFNode(tau=2.0, detach_reset=True, surrogate_function=surrogate.ATan()) if is_snn else nn.ReLU()
-        self.act2 = neuron.LIFNode(tau=2.0, detach_reset=True, surrogate_function=surrogate.ATan()) if is_snn else nn.ReLU()
-        self.n1 = n1
-        self.conv1 = nn.Conv2d(in_channels,out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.n2 = n2
-        self.conv2 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.scaler = Scaler(rate)
-
-        if stride != 1 or in_channels != self.expansion * out_channels:
-            self.shortcut = nn.Sequential(
-                layer.MaxPool2d(2, 2),
-                layer.Conv2d(in_channels, out_channels * self.expansion, kernel_size=1, stride=1, bias=False),
-                layer.BatchNorm2d(out_channels * self.expansion),
-            )
-
-    def forward(self, x):
-        out = self.act1(x)
-        shortcut = self.shortcut(x) if hasattr(self, 'shortcut') else x
-        out = self.bn1(self.conv1(self.scaler(out)))
-        out = self.act2(out)
-        out = self.bn2(self.conv2(self.scaler(out)))
-        out += shortcut
-        return out
-
-
 class Block(nn.Module):
     expansion = 1
 
@@ -109,7 +66,7 @@ class Resnet(nn.Module):
             layer.BatchNorm2d(self.in_channels),
         )
         # conv1.weight
-        self.block = Scale_Block if args.has_rate else Block
+        self.block = Block
         self.layer1 = self._make_layer(self.block, 64 * k, num_block[0], 2, args)
         self.layer2 = self._make_layer(self.block, 128 * k, num_block[1], 2, args)
         self.layer3 = self._make_layer(self.block, 256 * k, num_block[2], 2, args)
