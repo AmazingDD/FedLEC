@@ -25,7 +25,7 @@ python main.py -data_dir=. -dataset=cifar10 -model=vgg9 -strategy=fedlec -np=10 
 
 ## Supported Dataset
 
-You can download experiment data and put them into specific data folder manually. 
+You can download experiment data and manually put them into a specific data folder. 
 
 All data are available in the links below:
 
@@ -36,18 +36,18 @@ All data are available in the links below:
 
 ## Parameter Settings
 
-The paper introduce two types of label skews in federated SNN learning.
+The paper introduces two types of label skews in federated SNN learning.
 
 - Distribution-based Label Skew $p\sim Dir(a)$
 
     Try `-partition=noniid-c-dir -alpha=a`, where $a \in (0, 1)$ to control the skewness of Dirichlet sampling for labels.
 
-- Quantity-based Label Skew $\#cnum=c$
+- Quantity-based Label Skew \# $cnum=c$
 
     Try `-partition=noniid-cnum-c`, where $c$ represents the number of label types that one data shard could include
 
 
-For the other arguments descriptions, please reach the apppendix in our paper or find them in `main.py`.
+For the descriptions of the other arguments, please refer to the appendix in our paper or find them in `main.py`.
 
 ## Cite
 
