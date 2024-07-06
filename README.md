@@ -3,7 +3,7 @@ Official code for "FedLEC: Effective Federated Learning Method Under Extreme Lab
 
 ## Overview
 <p align="center">
-<img src="./assets/FedLAC.png" align="center" width="40%" style="margin: 0 auto">
+<img src="./assets/FedLAC.png" align="center" width="60%" style="margin: 0 auto">
 </p>
 
 ## Requirements
