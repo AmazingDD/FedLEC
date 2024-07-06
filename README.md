@@ -19,6 +19,9 @@ spikingjelly==0.0.0.0.14
 
 ## Quick Start
 
+Consider a federated learning scenario with 10 clients, and in each communication round, 20% of them will be picked to start local training. 
+If we want to implement _FedLEC_ with _S-VGG9_ model on _cifar10_ under $p\sim Dir(0.5)$ label skew condition, we must run:
+
 ```
 python main.py -data_dir=. -dataset=cifar10 -model=vgg9 -strategy=fedlec -np=10 -frac=0.2 -gpu=0 -partition=noniid-c-dir -alpha=0.5 -snn -T=4 -desc=Example
 ```
