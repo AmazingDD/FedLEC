@@ -110,8 +110,8 @@ def load_data(args):
         X_train, y_train = train_ds.data, train_ds.targets
         X_test, y_test = test_ds.data, test_ds.targets
 
-        X_train = X_train.unsqueeze(1).numpy()
-        X_test = X_test.unsqueeze(1).numpy()
+        X_train = X_train.unsqueeze(-1).numpy()
+        X_test = X_test.unsqueeze(-1).numpy()
         y_test = y_test.numpy()
         y_train = y_train.numpy()
 
