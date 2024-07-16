@@ -25,6 +25,7 @@ INPUT_SIZE = {
     'dvs128gesture': (2, 128, 128),
     'ncaltech101': (2, 180, 240),
     'nmnist': (2, 34, 34), 
+    'fmnist': (1, 28, 28)
 }
 
 CLASS_NUM = {
@@ -37,13 +38,15 @@ CLASS_NUM = {
     'dvs128gesture': 11, # T=16
     'ncaltech101': 101,
     'nmnist': 10,
+    'fmnist': 10,
 }
 
 NORM_PARAM = {
     'cifar10': [(0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)],
     'cifar100': [(0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)],
     'mnist': [(0.1307,), (0.3081,)],
-    'tinyimagenet': [(0.5, 0.5, 0.5), (0.5, 0.5, 0.5)]
+    'tinyimagenet': [(0.5, 0.5, 0.5), (0.5, 0.5, 0.5)],
+    'fmnist': [(0.1307,), (0.3081,)],
 }
 
 def ensure_dir(dirpath):
@@ -97,6 +100,20 @@ def load_data(args):
             root=args.data_dir, train=False, transform=transform, download=True)
         X_train, y_train = train_ds.data, train_ds.targets
         X_test, y_test = test_ds.data, test_ds.targets
+
+    elif dataset == 'fmnist':
+        transform = transforms.Compose([transforms.ToTensor()])
+        train_ds = torchvision.datasets.FashionMNIST(
+            root=args.data_dir, train=True, transform=transform, download=True)
+        test_ds = torchvision.datasets.FashionMNIST(
+            root=args.data_dir, train=False, transform=transform, download=True)
+        X_train, y_train = train_ds.data, train_ds.targets
+        X_test, y_test = test_ds.data, test_ds.targets
+
+        X_train = X_train.unsqueeze(1).numpy()
+        X_test = X_test.unsqueeze(1).numpy()
+        y_test = y_test.numpy()
+        y_train = y_train.numpy()
 
     elif dataset == 'cifar10':
         transform = transforms.Compose([transforms.ToTensor()])

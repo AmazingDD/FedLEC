@@ -36,6 +36,7 @@ All data are available in the links below:
 - [SVHN](http://ufldl.stanford.edu/housenumbers/)
 - [CIFAR10-DVS](https://figshare.com/articles/dataset/CIFAR10-DVS_New/4724671)
 - [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)
+- [Fasion MNIST](https://github.com/zalandoresearch/fashion-mnist)
 
 ## Parameter Settings
 
