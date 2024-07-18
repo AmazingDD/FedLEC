@@ -40,38 +40,35 @@ def partition_data(args, y_train):
     # quantity-based label imbalance: each party only has cnum different labels; for each label, random and equally divide them and distribute them to party which need them
     elif partition > "noniid-cnum-0" and partition <= "noniid-cnum-9": # each client contain how many labels?
         num = int(partition.split('-')[2]) # label number
-        if num == 10:
-            net_dataidx_map = {i: np.ndarray(0, dtype=np.int64) for i in range(n_parties)}
-            for i in range(num):
-                idx_k = np.where(y_train == i)[0]
-                np.random.shuffle(idx_k)
-                split = np.array_split(idx_k, n_parties)
-                for j in range(n_parties):
-                    net_dataidx_map[j] = np.append(net_dataidx_map[j], split[j])
-        else:
-            times = [0 for _ in range(K)] # how many times each label is picked for different client
-            contain = [] # store the labels for each clients
-            for i in range(n_parties):
-                current = [i % K]
-                times[i % K] += 1
-                j = 1
-                while j < num:
-                    ind = random.randint(0, K - 1)
-                    if ind not in current:
-                        j += 1
-                        current.append(ind)
-                        times[ind] += 1
-                contain.append(current)
-            net_dataidx_map = {i: np.ndarray(0, dtype=np.int64) for i in range(n_parties)}
-            for i in range(K):
-                idx_k = np.where(y_train == i)[0]
-                np.random.shuffle(idx_k)
-                split = np.array_split(idx_k, times[i]) 
-                ids = 0
-                for j in range(n_parties):
-                    if i in contain[j]: # if label i is picked by client j
-                        net_dataidx_map[j] = np.append(net_dataidx_map[j], split[ids])
-                        ids += 1
+
+        times=[0 for _ in range(K)]
+        contain=[]
+        for i in range(n_parties):
+            current = [i % K]
+            times[i % K] += 1
+            j=1
+            while j < num:
+                ind=random.randint(0,K-1)
+                if (ind not in current):
+                    j = j + 1
+                    current.append(ind)
+                    times[ind] += 1
+            contain.append(current)
+        
+        net_dataidx_map = {i:np.ndarray(0, dtype=np.int64) for i in range(n_parties)}
+        for i in range(K):
+            idx_k = np.where(y_train == i)[0]
+            np.random.shuffle(idx_k)
+            if times[i] == 0:
+                continue
+            split = np.array_split(idx_k, times[i])
+            ids = 0
+            for j in range(n_parties):
+                if i in contain[j]:
+                    net_dataidx_map[j]=np.append(net_dataidx_map[j],split[ids])
+                    ids += 1
+        for i in range(n_parties):
+            net_dataidx_map[i] = net_dataidx_map[i].tolist()
 
     # quantity skew
     elif partition == 'iid-diff-quantity': 
