@@ -52,7 +52,7 @@ parser.add_argument('-local_epochs', type=int, default=10, help='number of local
 parser.add_argument('-mu', type=float, default=0.01, help='the regularization parameter for fedprox')
 parser.add_argument('-nc', '--n_clusters', type=int, default=5, help='Number of clusters for FedConcat')
 parser.add_argument('-tune_epochs', type=int, default=200, help='Classifier communication round for FedConcat') # 1000 if you want
-parser.add_argument('-eps', type=float, default=0, help='Epsilon for differential privacy to protect label distribution')
+# parser.add_argument('-eps', type=float, default=0, help='Epsilon for differential privacy to protect label distribution')
 parser.add_argument('-lc', action='store_true', help="Whether to do loss calibration tackling label skew with fedavg")
 parser.add_argument('-tau', type=float, default=0.01, help='calibration loss constant for fedavg with LC')
 parser.add_argument('-rs', action='store_true', help="Whether to do restricted softmax tackling label skew with fedavg")
@@ -98,14 +98,6 @@ client_distribution = np.zeros((args.n_parties, args.num_classes))
 for i in range(args.n_parties):
     for j in traindata_cls_counts[i].keys():
         client_distribution[i][j] = traindata_cls_counts[i][j] / len(net_dataidx_map[i])
-
-if args.eps > 0:
-    for i in range(args.n_parties):
-        lap = np.random.laplace(0, 1 / args.eps, args.num_classes)
-        for j in range(args.num_classes):
-            client_distribution[i][j] += lap[j]
-
-    logger.info(client_distribution)
 
 train_all_in_list = [] # used to store local train dataset
 test_all_in_list = [] # used to store local test dataset
@@ -779,50 +771,9 @@ elif args.strategy == 'fedconcat':
     encoder_global_param = [encoder_list[0].state_dict() for i in range(num_k)]
     classifier_global_param = [classifier_list[0].state_dict() for i in range(num_k)]
 
-    
-    if args.dataset in ("cifar100", "tinyimagenet"):
-        N, D = client_distribution.shape
-        centroids = KMeans(n_clusters=num_k).fit(client_distribution).cluster_centers_
-        for _ in range(100):
-            # Compute distances from points to centroids.
-            distances = np.linalg.norm(client_distribution[:, None] - centroids, axis=-1)
-
-            # Assign points to closest centroid.
-            cluster_assignment = np.argmin(distances, axis=1)
-
-            # If some clusters are empty, reinitialize their centroids.
-            for j in range(num_k):
-                if (cluster_assignment == j).sum() == 0:
-                    centroids[j] = client_distribution[np.random.choice(N)]
-            
-            # If a cluster is over capacity, reassign its furthest points.
-            max_cluster_size = int(1.2 * args.n_parties / args.n_clusters)
-            for j in range(num_k):
-                while (cluster_assignment == j).sum() > max_cluster_size:
-                    idx = np.where(cluster_assignment == j)[0]
-                    furthest_point_idx = idx[np.argmax(distances[idx, j])]
-                    cluster_assignment[furthest_point_idx] = -1
-                    distances[furthest_point_idx, j] = np.inf
-
-            # If a point is unassigned, assign it to the closest under-capacity cluster.
-            for i in range(N):
-                if cluster_assignment[i] == -1:
-                    for j in np.argsort(distances[i]):
-                        if (cluster_assignment == j).sum() < max_cluster_size:
-                            cluster_assignment[i] = j
-                            break
-
-            # Update centroids.
-            for j in range(num_k):
-                if (cluster_assignment == j).sum() > 0:
-                    centroids[j] = client_distribution[cluster_assignment == j].mean(axis=0)
-
-            assign = cluster_assignment
-
-    else:
-        estimator = KMeans(n_clusters=num_k)
-        estimator.fit(client_distribution)
-        assign = estimator.labels_
+    estimator = KMeans(n_clusters=num_k)
+    estimator.fit(client_distribution)
+    assign = estimator.labels_
     
     logger.info(assign)
     group = [[] for i in range(num_k)]
