@@ -1043,8 +1043,8 @@ elif args.strategy == 'flea':
         global_start_time = time.time()
         arr = np.arange(args.n_parties)
         np.random.shuffle(arr)
-        selected = arr[:int(args.n_parties * args.frac)]
-        # selected = arr[:] # all client participate for warmup
+        # selected = arr[:int(args.n_parties * args.frac)]
+        selected = arr[:] # all client participate for warmup
 
         global_param = global_model.state_dict()
 
@@ -1171,7 +1171,7 @@ elif args.strategy == 'flea':
             train_ds_local = train_all_in_list[idx]
             train_dl_local = torch.utils.data.DataLoader(dataset=train_ds_local, batch_size=args.batch_size, shuffle=True)
             iter_trainloader = iter(train_dl_local)
-            n_batch = len(train_ds_local) // args.batch_size + 1
+            n_batch = len(train_ds_local) // args.batch_size + 1 if len(train_ds_local) % args.batch_size else len(train_ds_local) // args.batch_size
 
             with torch.no_grad():
                 # hold_data = self.send_data(fre=1,fraction=percent)
@@ -1240,17 +1240,15 @@ elif args.strategy == 'flea':
             net.to(device)
 
             train_ds_local = train_all_in_list[net_id]
-            n_batch = len(train_ds_local) // args.batch_size + 1
+            # n_batch = len(train_ds_local) // args.batch_size + 1
+            n_batch = len(train_ds_local) // args.batch_size + 1 if len(train_ds_local) % args.batch_size else len(train_ds_local) // args.batch_size
             train_dl_local = torch.utils.data.DataLoader(dataset=train_ds_local, batch_size=args.batch_size, shuffle=True)
-            iter_trainloader = iter(train_dl_local)
             logger.info(f'Training network {net_id}. n_training: {len(train_ds_local)}')
 
             # feature loader for each selected client
-            feature_batch = len(all_features) // args.batch_size + 1
+            feature_batch = len(all_features) // args.batch_size + 1 if len(all_features) % args.batch_size else len(all_features) // args.batch_size
             featureloader = DataLoader(all_features, args.batch_size, shuffle=True)
-            iter_featureloader = iter(featureloader)
             torch.cuda.empty_cache()
-
             n_batch = min(n_batch, feature_batch) # local training need features from warmup to support 
 
             lr_decay = 1 - epoch * 0.018 if epoch < 50 else 0.1
@@ -1276,6 +1274,9 @@ elif args.strategy == 'flea':
             for l_epoch in range(args.local_epochs):
                 local_start_time = time.time()
                 epoch_loss_collector = []
+
+                iter_trainloader = iter(train_dl_local)
+                iter_featureloader = iter(featureloader)
 
                 for _ in range(n_batch):
                     optimizer.zero_grad()
@@ -1376,7 +1377,6 @@ elif args.strategy == 'flea':
             max_acc = test_acc
 
         logger.info(f"Epoch [{epoch + 1}/{args.global_epochs}] - Global Training accuracy: {train_acc:.4f}, Test accuracy: {test_acc:.4f}, Best test accuracy: {max_acc:.4f}, Train elapse: {time.time() - global_start_time:.2f}s")
-
 
 elif args.strategy == 'fedlec': # label alignment calibration
     nets, local_model_meta_data, layer_type = init_nets(args.n_parties, args)
