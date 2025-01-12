@@ -11,8 +11,9 @@ from sklearn.cluster import KMeans
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn.functional as F
+from torch.distributions.laplace import Laplace
 
 from utils import *
 from sampler import partition_data
@@ -1490,6 +1491,11 @@ elif args.strategy == 'fedlec': # label alignment calibration
 
         for idx in range(len(selected)):
             net_param = nets[selected[idx]].cpu().state_dict()
+            # add Laplacian noise
+            if args.eps > 0:
+                for key in net_param:
+                    net_param[key] = net_param[key].float() + Laplace(0, args.eps).expand(net_param[key].shape).sample()
+
             if idx == 0:
                 for key in net_param:
                     global_param[key] = net_param[key] * fed_avg_freqs[idx]
