@@ -3,7 +3,7 @@ Official code for "FedLEC: Effective Federated Learning Method Under Extreme Lab
 
 ## Overview
 <p align="center">
-<img src="./assets/FedLAC.png" align="center" width="60%" style="margin: 0 auto">
+<img src="./assets/fedlec.png" align="center" width="80%" style="margin: 0 auto">
 </p>
 
 ## Requirements
@@ -32,11 +32,11 @@ You can download experiment data and manually put them into a specific data fold
 
 All data are available in the links below:
 
-- [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html)
+- [CIFAR10/CIFAR100](https://www.cs.toronto.edu/~kriz/cifar.html)
 - [SVHN](http://ufldl.stanford.edu/housenumbers/)
 - [CIFAR10-DVS](https://figshare.com/articles/dataset/CIFAR10-DVS_New/4724671)
 - [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)
-- [Fasion MNIST](https://github.com/zalandoresearch/fashion-mnist)
+<!-- - [Fasion MNIST](https://github.com/zalandoresearch/fashion-mnist) -->
 
 ## Parameter Settings
 

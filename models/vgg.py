@@ -1,5 +1,5 @@
 import re
-
+import torch
 import torch.nn as nn
 from spikingjelly.activation_based import layer, functional, neuron, surrogate
 
@@ -100,6 +100,22 @@ class VGG(nn.Module):
         x = self.fc(x) # -> (T, B, num_cls)
 
         return x.mean(0) # -> (B, num_cls)
+    
+    def get_feature(self, x, idx=13):
+        # functional.reset_net(self)
+        with torch.no_grad():
+            feature = x
+            for i in range(idx + 1):
+                feature = self.features[i](feature)
+            return feature
+        
+    def forward_feature(self, feature, idx=13):
+        for i in range(idx + 1, len(self.features)):
+            out = self.features[i](feature)
+            feature = out    
+        out = self.fc(out)
+
+        return out.mean(0)
     
 class VGGEncoder(nn.Module):
     def __init__(self, args):

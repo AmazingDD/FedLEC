@@ -6,10 +6,12 @@ import argparse
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from collections import Counter
 from sklearn.cluster import KMeans
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 
 from utils import *
@@ -25,7 +27,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-data_dir', type=str, default='.', help='dataset path')
 parser.add_argument('-log_dir', type=str, required=False, default="./logs/", help='Log directory path')
 parser.add_argument('-result_dir', type=str, required=False, default="./saved/", help='Model directory path')
-parser.add_argument('-model', type=str, default='vgg', help='neural network used in training')
+parser.add_argument('-model', type=str, default='vgg9', help='neural network used in training')
 parser.add_argument('-snn', action='store_true', help="Whether to train SNN or ANN")
 parser.add_argument('-dataset', type=str, default='cifar10', help='dataset used for training')
 parser.add_argument('-b', '--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
@@ -1015,6 +1017,365 @@ elif args.strategy == 'fedconcat':
     
     global_param = global_model.state_dict()
     args.global_epochs = args.tune_epochs
+
+elif args.strategy == 'flea':
+    nets, local_model_meta_data, layer_type = init_nets(args.n_parties, args)
+    global_models, global_model_meta_data, global_layer_type = init_nets(1, args)
+    global_model = global_models[0]
+
+    global_param = global_model.state_dict()
+
+    if not args.not_same_initial:
+        for _, net in nets.items():
+            net.load_state_dict(global_param)
+
+    global_model.to(device)
+
+    layer_index = 13
+    percent = 0.1
+    history_clients = []
+    features = {}
+
+    max_acc = -1.
+    warmup = 1
+    for epoch in range(warmup):
+        global_start_time = time.time()
+        arr = np.arange(args.n_parties)
+        np.random.shuffle(arr)
+        selected = arr[:int(args.n_parties * args.frac)]
+        # selected = arr[:] # all client participate for warmup
+
+        global_param = global_model.state_dict()
+
+        for idx in selected:
+            nets[idx].load_state_dict(global_param)
+
+        for net_id, net in nets.items():
+            if net_id not in selected:
+                continue
+            net.to(device)
+            train_ds_local = train_all_in_list[net_id]
+            train_dl_local = torch.utils.data.DataLoader(dataset=train_ds_local, batch_size=args.batch_size, shuffle=True)
+            logger.info(f'Training network {net_id}. n_training: {len(train_ds_local)}')
+
+            lr_decay = 1 - epoch * 0.018 if epoch < 50 else 0.1
+            logger.info(f'Local adapation with distilling: {args.lr * lr_decay}')
+
+            if args.optimizer == 'adam':
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=args.lr * lr_decay, weight_decay=args.weight_decay)
+            elif args.optimizer == 'sgd':
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=args.lr * lr_decay, momentum=args.momentum, weight_decay=args.weight_decay)
+            else:
+                raise NotImplementedError(f'Not support {args.optimizer}')
+            
+            KLLoss = nn.KLDivLoss(reduction='batchmean')
+            CELoss = nn.CrossEntropyLoss(reduction='mean')
+            CorLoss = Corelation()
+
+            for l_epoch in range(args.local_epochs * 3):
+                local_start_time = time.time()
+                epoch_loss_collector = []
+                for x, target in train_dl_local:
+                    x, target = x.to(device), target.to(device)
+                    
+                    optimizer.zero_grad()
+                    x.requires_grad = True
+                    target.requires_grad = False
+                    target = target.long()
+
+                    # event-driven data, repeat num is 0
+                    if repeat_num:
+                        x = x.unsqueeze(0).repeat(args.T, 1, 1, 1, 1) # -> (T, B, C, H, W)
+                    else: # dvs data
+                        x = x.transpose(0, 1) # (B, T, C, H, W) -> (T, B, C, H, W)
+
+                    batch_f = net.get_feature(x, idx=layer_index)
+                    functional.reset_net(net)
+
+                    # local data CE
+                    out = net(x)
+                    loss1 = CELoss(out, target)
+
+                    # local data distilling
+                    tau = 1
+                    beta = 0.5
+                    logit_gb = global_model(x)
+                    pro_gb = F.softmax(logit_gb / tau, dim=1)
+                    pro_lc = F.log_softmax(out / tau, dim=1)
+                    loss2 = beta * (tau ** 2) * KLLoss(pro_lc,pro_gb)
+
+                    # local feature decorrelation
+                    alpha3 = 3
+                    loss3 = CorLoss(x, batch_f) * alpha3
+
+                    # total loss
+                    loss = loss1 + loss2 + loss3 
+
+                    loss.backward()
+                    optimizer.step()
+
+                    epoch_loss_collector.append(loss.item())
+
+                    functional.reset_net(net)
+                    functional.reset_net(global_model)
+
+                epoch_loss = sum(epoch_loss_collector) / len(epoch_loss_collector)
+                if (1 + l_epoch) % 5 == 0:
+                    logger.info(f'Local Epoch [{1 + l_epoch}/{args.local_epochs * 3}] - Loss: {epoch_loss:.4f}, Time elapse: {time.time() - local_start_time:.2f}s')
+
+            train_acc = compute_accuracy(net, train_dl_local, device, repeat_num)
+            test_acc = compute_accuracy(net, test_dl_global, device, repeat_num)
+            net.to('cpu')
+
+            logger.info(f"net {net_id} Training accuracy: {train_acc:.4f}, Test accuracy: {test_acc:.4f}")
+
+            history_clients.append(net_id)
+
+        # global updating
+        total_data_points = sum([len(net_dataidx_map[r]) for r in selected])
+        fed_avg_freqs = [len(net_dataidx_map[r]) / total_data_points for r in selected]
+
+        for idx in range(len(selected)):
+            net_param = nets[selected[idx]].cpu().state_dict()
+            if idx == 0:
+                for key in net_param:
+                    global_param[key] = net_param[key] * fed_avg_freqs[idx]
+            else:
+                for key in net_param:
+                    global_param[key] += net_param[key] * fed_avg_freqs[idx]
+
+        global_model.load_state_dict(global_param)
+        train_acc = compute_accuracy(global_model, train_dl_global, device, repeat_num)
+        test_acc = compute_accuracy(global_model, test_dl_global, device, repeat_num)
+
+        global_acc_record.append(test_acc)
+        if max_acc <= test_acc:
+            max_acc = test_acc
+
+        logger.info(f"Warmup Epoch [{epoch + 1}/{args.global_epochs}] - Global Training accuracy: {train_acc:.4f}, Test accuracy: {test_acc:.4f}, Best test accuracy: {max_acc:.4f}, Train elapse: {time.time() - global_start_time:.2f}s")
+
+        for idx in selected:
+            nets[idx].load_state_dict(global_param)
+
+        # update feature buffer
+        history_round = 1
+        remain_users = history_clients[-args.n_parties * history_round:]
+        current_users = [uid for uid in features.keys()]
+        for uid in current_users:
+            if uid not in remain_users:
+                features.pop(uid)
+        for idx in selected:
+            # send features
+            nets[idx].eval()
+            train_ds_local = train_all_in_list[idx]
+            train_dl_local = torch.utils.data.DataLoader(dataset=train_ds_local, batch_size=args.batch_size, shuffle=True)
+            iter_trainloader = iter(train_dl_local)
+            n_batch = len(train_ds_local) // args.batch_size + 1
+
+            with torch.no_grad():
+                # hold_data = self.send_data(fre=1,fraction=percent)
+                for batch in range(n_batch):
+                    batch_x, batch_y = next(iter_trainloader)
+                    if batch == 0:
+                        X, Y = batch_x, batch_y
+                    else:
+                        Y = torch.cat((Y, batch_y), dim=0)
+                        X = torch.cat((X, batch_x), dim=0)
+
+                cnt = int(percent * (len(X)))
+                sample_idxs = np.random.choice(range(len(X)), cnt).tolist()
+                feature = X[sample_idxs, ...]  # B, (C, H, W) / (T, C, H, W)
+                label = Y[sample_idxs]
+
+                # event-driven data, repeat num is 0
+                if repeat_num:
+                    feature = feature.unsqueeze(0).repeat(args.T, 1, 1, 1, 1) # -> (T, B, C, H, W)
+                else: # dvs data
+                    feature = feature.transpose(0, 1) # (B, T, C, H, W) -> (T, B, C, H, W)
+
+                if layer_index >= 0:
+                    feature = nets[idx].get_feature(feature, idx=layer_index)
+                    functional.reset_net(nets[idx])
+                # else share raw data with negative layers
+
+            features[idx] = [feature, label]
+            del feature, label
+
+        logger.info(f'size of the global feature buffer: {len(features)}')
+        torch.cuda.empty_cache()
+
+    # send features to each client
+    for i, idx in enumerate(features.keys()):
+        if i == 0:
+            local_features, local_labels = features[idx]
+        else:
+            feature, label = features[idx] # (T, B, C, H, W)
+            local_features = torch.cat((local_features, feature), dim=1) # concat along B-dim
+            local_labels = torch.cat((local_labels, label))
+
+    # change (T, B, ...) to (B, T, ...) for dataloader index correctly
+    local_features = local_features.transpose(0, 1)
+
+    all_features = [(x, y) for x, y in zip(local_features, local_labels)] 
+    logger.info(f'Current data/feature buff: {local_features.shape}, {local_labels.shape}, {len(all_features)}') 
+    local_labels = local_labels.to('cpu').tolist()
+    logger.info(f'Buffer classes: {Counter(local_labels)}')
+
+    for epoch in range(warmup, args.global_epochs):
+        global_start_time = time.time()
+        arr = np.arange(args.n_parties)
+        np.random.shuffle(arr)
+        selected = arr[:int(args.n_parties * args.frac)]
+
+        global_param = global_model.state_dict()
+
+        # send parameters
+        for idx in selected:
+            nets[idx].load_state_dict(global_param)
+        
+        for net_id, net in nets.items():
+            if net_id not in selected:
+                continue
+            net.to(device)
+
+            train_ds_local = train_all_in_list[net_id]
+            n_batch = len(train_ds_local) // args.batch_size + 1
+            train_dl_local = torch.utils.data.DataLoader(dataset=train_ds_local, batch_size=args.batch_size, shuffle=True)
+            iter_trainloader = iter(train_dl_local)
+            logger.info(f'Training network {net_id}. n_training: {len(train_ds_local)}')
+
+            # feature loader for each selected client
+            feature_batch = len(all_features) // args.batch_size + 1
+            featureloader = DataLoader(all_features, args.batch_size, shuffle=True)
+            iter_featureloader = iter(featureloader)
+            torch.cuda.empty_cache()
+
+            n_batch = min(n_batch, feature_batch) # local training need features from warmup to support 
+
+            lr_decay = 1 - epoch * 0.018 if epoch < 50 else 0.1
+            alpha3 = 3 - epoch * 0.1 if epoch < 20 else 1
+            logger.info(f'Local adapation with distilling: lr {args.lr * lr_decay}, alpha3 {alpha3}')
+
+            if args.optimizer == 'adam':
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=args.lr * lr_decay, weight_decay=args.weight_decay)
+            elif args.optimizer == 'sgd':
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=args.lr * lr_decay, momentum=args.momentum, weight_decay=args.weight_decay)
+            else:
+                raise NotImplementedError(f'Not support {args.optimizer}')
+
+            net.train()
+            global_model.eval()
+
+            tau = 1
+            KLLoss = nn.KLDivLoss(reduction='batchmean')
+            Loss = nn.CrossEntropyLoss(reduction='mean')
+            CorLoss = Corelation()
+            MCELoss = Multilabel() 
+
+            for l_epoch in range(args.local_epochs):
+                local_start_time = time.time()
+                epoch_loss_collector = []
+
+                for _ in range(n_batch):
+                    optimizer.zero_grad()
+
+                    batch_X, batch_Y = next(iter_trainloader)
+                    if repeat_num:
+                        batch_X = batch_X.unsqueeze(0).repeat(args.T, 1, 1, 1, 1)
+                    else:
+                        batch_X = batch_X.transpose(0, 1)
+
+                    batch_X_fea, batch_Y_fea = next(iter_featureloader)
+
+                    batch_X, batch_Y = batch_X.to(device), batch_Y.to(device)
+                    batch_X_fea = batch_X_fea.transpose(0, 1).to(device) # (B, T, ...) to (T, B, ...)
+                    batch_Y_fea = batch_Y_fea.to(device)
+
+                    batch_F = net.get_feature(batch_X, idx=layer_index)
+                    functional.reset_net(net)
+
+                    fea_num = min(batch_X.shape[1], batch_X_fea.shape[1])
+                    batch_x = batch_F[:, :fea_num, ...]
+                    batch_y = batch_Y[:fea_num,]
+                    batch_X_fea = batch_X_fea[:, :fea_num, ...]
+                    batch_Y_fea = batch_Y_fea[:fea_num,]
+
+                    lam = np.random.beta(2, 2, fea_num)
+                    mix_x = torch.zeros(batch_x.shape).to(device)
+                    mix_y = torch.zeros(F.one_hot(batch_y, args.num_classes).shape).to(device)
+                    for i in range(fea_num):
+                        mix_x[:, i, ...] = lam[i] * batch_x[:, i, ...] + (1-lam[i]) * batch_X_fea[:, i, ...]
+                        mix_y[i, :] = lam[i] * F.one_hot(batch_y, args.num_classes)[i, :] + (1 - lam[i]) * F.one_hot(batch_Y_fea, args.num_classes)[i, :]
+
+                    logit = net(batch_X)
+                    functional.reset_net(net)
+                    loss1 = Loss(logit, batch_Y) 
+
+                    # global data CE
+                    mix_logit = net.forward_feature(mix_x, idx=layer_index)
+                    functional.reset_net(net)
+                    loss2 = MCELoss(mix_logit, mix_y)
+
+                    # local feature decorrelation
+                    loss3 = CorLoss(batch_X, batch_F)
+
+                    # global data distilling
+                    logit_lc = net.forward_feature(batch_X_fea, idx=layer_index)
+                    functional.reset_net(net)
+                    logit_gb = global_model.forward_feature(batch_X_fea, idx=layer_index) 
+                    functional.reset_net(global_model)
+                    pro_gb = F.softmax(logit_gb / tau, dim=1)     ## y
+                    pro_lc = F.log_softmax(logit_lc / tau, dim=1) ## x
+                    # The smallest KL is 0, always positive 
+                    loss4 = KLLoss(pro_lc, pro_gb) * (tau ** 2)
+
+                    loss = loss1 + loss2 + loss3 * alpha3 + loss4
+
+                    loss.backward()
+                    optimizer.step()
+
+                    del loss1, loss2, loss3, loss4, logit, logit_gb, logit_lc, pro_gb, pro_lc, batch_X, batch_Y, batch_X_fea, batch_Y_fea
+
+                    epoch_loss_collector.append(loss.item())
+
+                    functional.reset_net(net)
+                    functional.reset_net(global_model)
+
+                epoch_loss = sum(epoch_loss_collector) / len(epoch_loss_collector)
+                if (1 + l_epoch) % 5 == 0:
+                    logger.info(f'Local Epoch [{1 + l_epoch}/{args.local_epochs}] - Loss: {epoch_loss:.4f}, Time elapse: {time.time() - local_start_time:.2f}s')
+
+            train_acc = compute_accuracy(net, train_dl_local, device, repeat_num)
+            test_acc = compute_accuracy(net, test_dl_global, device, repeat_num)
+            net.to('cpu')
+
+            logger.info(f"net {net_id} Training accuracy: {train_acc:.4f}, Test accuracy: {test_acc:.4f}")
+
+            history_clients.append(net_id)
+
+        # global updating
+        total_data_points = sum([len(net_dataidx_map[r]) for r in selected])
+        fed_avg_freqs = [len(net_dataidx_map[r]) / total_data_points for r in selected]
+
+        for idx in range(len(selected)):
+            net_param = nets[selected[idx]].cpu().state_dict()
+            if idx == 0:
+                for key in net_param:
+                    global_param[key] = net_param[key] * fed_avg_freqs[idx]
+            else:
+                for key in net_param:
+                    global_param[key] += net_param[key] * fed_avg_freqs[idx]
+
+        global_model.load_state_dict(global_param)
+        train_acc = compute_accuracy(global_model, train_dl_global, device, repeat_num)
+        test_acc = compute_accuracy(global_model, test_dl_global, device, repeat_num)
+
+        global_acc_record.append(test_acc)
+        if max_acc <= test_acc:
+            max_acc = test_acc
+
+        logger.info(f"Epoch [{epoch + 1}/{args.global_epochs}] - Global Training accuracy: {train_acc:.4f}, Test accuracy: {test_acc:.4f}, Best test accuracy: {max_acc:.4f}, Train elapse: {time.time() - global_start_time:.2f}s")
+
 
 elif args.strategy == 'fedlec': # label alignment calibration
     nets, local_model_meta_data, layer_type = init_nets(args.n_parties, args)
