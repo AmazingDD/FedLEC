@@ -110,6 +110,9 @@ def load_data_har(args):
     X_train = X_train[:, :, np.newaxis, np.newaxis].transpose((0, 2, 1, 3)) 
     X_test = X_test[:, :, np.newaxis, np.newaxis].transpose((0, 2, 1, 3))
 
+    X_train = X_train.astype(np.float32)
+    X_test = X_test.astype(np.float32)
+
     net_dataidx_map = {}
     for net_id, subject_id in enumerate(np.unique(subject_train)):
         indices = np.where(subject_train == subject_id)

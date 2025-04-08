@@ -335,10 +335,10 @@ elif args.strategy == 'fedlec':
 
         for idx in range(len(selected)):
             net_param = nets[selected[idx]].cpu().state_dict()
-            if args.eps > 0:
-                from torch.distributions.laplace import Laplace
-                for key in net_param:
-                    net_param[key] = net_param[key].float() +  Laplace(0, args.eps).expand(net_param[key].shape).sample()
+            # if args.eps > 0:
+            #     from torch.distributions.laplace import Laplace
+            #     for key in net_param:
+            #         net_param[key] = net_param[key].float() +  Laplace(0, args.eps).expand(net_param[key].shape).sample()
 
             if idx == 0:
                 for key in net_param:
