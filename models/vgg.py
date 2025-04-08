@@ -15,24 +15,39 @@ vgg_cfg = {
 }
 
 class SimpleCNN(nn.Module):
+    ''' for HAR Simulation '''
     def __init__(self, args):
         super(SimpleCNN, self).__init__()
 
-        C, H, W = INPUT_SIZE[args.dataset]
+        # C, H, W = INPUT_SIZE[args.dataset]
         self.bias_flag = False if args.snn else True
+        # self.conv_fc = nn.Sequential(
+        #     layer.Conv2d(C, 6, kernel_size=5),
+        #     neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
+        #     layer.MaxPool2d(2, 2),
+        #     layer.Conv2d(6, 16, kernel_size=5),
+        #     neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
+        #     layer.MaxPool2d(2, 2),
+        #     layer.Flatten(),
+        #     layer.Linear((((H - 5 + 1) // 2 - 5 + 1) // 2) * (((W - 5 + 1) // 2 - 5 + 1) // 2) * 16, 120),
+        #     neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
+        #     layer.Linear(120, 84),
+        #     neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
+        #     layer.Linear(84, args.num_classes),
+        # )
+
         self.conv_fc = nn.Sequential(
-            layer.Conv2d(C, 6, kernel_size=5),
+            layer.Conv2d(1, 64, kernel_size=3, padding=1),
+            layer.BatchNorm2d(64),
             neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
-            layer.MaxPool2d(2, 2),
-            layer.Conv2d(6, 16, kernel_size=5),
+            layer.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
+            layer.BatchNorm2d(128),
             neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
-            layer.MaxPool2d(2, 2),
+            layer.MaxPool2d(kernel_size=(1,2)),
             layer.Flatten(),
-            layer.Linear((((H - 5 + 1) // 2 - 5 + 1) // 2) * (((W - 5 + 1) // 2 - 5 + 1) // 2) * 16, 120),
+            layer.Linear(128 * 280, 128),
             neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
-            layer.Linear(120, 84),
-            neuron.LIFNode(detach_reset=True, surrogate_function=surrogate.ATan()) if args.snn else nn.ReLU(),
-            layer.Linear(84, args.num_classes),
+            layer.Linear(128, args.num_classes)
         )
 
         functional.set_step_mode(self, 'm')

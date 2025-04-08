@@ -2,6 +2,8 @@ import os
 import math
 import datetime
 import numpy as np
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
 
 import torch
 import torch.nn as nn
@@ -89,6 +91,33 @@ class Logger:
         f.write(f'[{get_local_time()}] - {s}\n')
         f.flush()
         f.close()
+
+def load_data_har(args):
+    INPUT_FOLDER = f'{args.data_dir}/HAR'
+    X_train = pd.read_csv(f'{INPUT_FOLDER}/train/X_train.txt', delim_whitespace=True, header=None).values
+    X_test = pd.read_csv(f'{INPUT_FOLDER}/test/X_test.txt', delim_whitespace=True, header=None).values
+    subject_train = pd.read_csv(f'{INPUT_FOLDER}/train/subject_train.txt', delim_whitespace=True, header=None).values.ravel()
+
+    y_train = pd.read_csv(f'{INPUT_FOLDER}/train/y_train.txt', delim_whitespace=True, header=None).values.ravel()
+    y_test = pd.read_csv(f'{INPUT_FOLDER}/test/y_test.txt', delim_whitespace=True, header=None).values.ravel()
+
+
+    encoder = LabelEncoder()
+    y_train = encoder.fit_transform(y_train)
+    y_test = encoder.transform(y_test)
+
+    # (..., 1, 561, 1) = (B, H, W, C)
+    X_train = X_train[:, :, np.newaxis, np.newaxis].transpose((0, 2, 1, 3)) 
+    X_test = X_test[:, :, np.newaxis, np.newaxis].transpose((0, 2, 1, 3))
+
+    net_dataidx_map = {}
+    for net_id, subject_id in enumerate(np.unique(subject_train)):
+        indices = np.where(subject_train == subject_id)
+
+        net_dataidx_map[net_id] = indices
+
+    return X_train, y_train, X_test, y_test, net_dataidx_map
+
 
 def load_data(args):
     dataset = args.dataset
