@@ -1,5 +1,5 @@
 # FedLEC
-Official code for "FedLEC: Effective Federated Learning Method Under Extreme Label Skews for Spiking Neural Networks" (AAAI2025)
+Official code for "Exploiting Label Skewness for Spiking Neural Networks in Federated Learning" (IJCAI'2025)
 
 ## Overview
 <p align="center">
@@ -58,5 +58,10 @@ For the descriptions of the other arguments, please refer to the appendix in our
 Please cite the following paper if you find our work contributes to yours in any way:
 
 ```
-
+@article{yu2024exploiting,
+  title={Exploiting Label Skewness for Spiking Neural Networks in Federated Learning},
+  author={Di Yu and Xin Du and Linshan Jiang and Huijing Zhang and Shunwen Bai and Shuiguang Deng},
+  journal={arXiv preprint arXiv:2412.17305},
+  year={2024}
+}
 ```

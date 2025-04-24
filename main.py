@@ -1449,15 +1449,12 @@ elif args.strategy == 'fedlec': # label alignment calibration
 
                     out = net(x)
                 
-                    # L_cal
-                    logits = out + torch.log(prior + 1e-9)
-                    prior_celoss = criterion(logits, target)
-
+                    prior_celoss = criterion(out, target)
                     cls_weight = (num_per_class.float() / torch.sum(num_per_class.float())).to(device)
                     balanced_prior = torch.tensor(1. / args.num_classes).float().to(device)
                     pred_spread = (out - torch.log(prior + 1e-9) + torch.log(balanced_prior + 1e-9)).T * (target != torch.arange(0, args.num_classes).view(-1, 1).type_as(target)) # (cls, B)
                     batch_num = pred_spread.size(-1)
-                    l_gc = -torch.sum((np.log(batch_num) - torch.logsumexp(pred_spread, -1)) * cls_weight)
+                    l_gc = prior_celoss - 0.005 * torch.sum((np.log(batch_num) - torch.logsumexp(pred_spread, -1)) * cls_weight)
 
                     teach_output = global_model(x).detach()
                     output_no_exist_log_soft = nn.functional.log_softmax(out[:, no_exist_label], dim=1)
@@ -1465,7 +1462,7 @@ elif args.strategy == 'fedlec': # label alignment calibration
                     kl = nn.KLDivLoss(reduction='batchmean')
                     l_ad = kl(output_no_exist_log_soft, output_no_exist_teacher_soft)
 
-                    loss = prior_celoss + 0.005 * l_gc + l_ad * args.lamda # \theta=0.005
+                    loss = l_gc + l_ad * args.lamda
 
                     loss.backward()
                     optimizer.step()
