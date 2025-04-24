@@ -58,10 +58,11 @@ For the descriptions of the other arguments, please refer to the appendix in our
 Please cite the following paper if you find our work contributes to yours in any way:
 
 ```
-@article{yu2024exploiting,
-  title={Exploiting Label Skewness for Spiking Neural Networks in Federated Learning},
-  author={Di Yu and Xin Du and Linshan Jiang and Huijing Zhang and Shunwen Bai and Shuiguang Deng},
-  journal={arXiv preprint arXiv:2412.17305},
-  year={2024}
+@inproceedings{yu2025exploiting,
+  title     = {Exploiting Label Skewness for Spiking Neural Networks in Federated Learning},
+  author    = {Di, Yu and Changze, Lv and Xin, Du and Linshan, Jiang and Wentao, Tong and Zhenyu, Liao and Shuiguang, Deng},
+  booktitle = {Proceedings of the Thirty-Fourth International Joint Conference on
+               Artificial Intelligence, {IJCAI-25}},
+  year      = {2025} 
 }
 ```
